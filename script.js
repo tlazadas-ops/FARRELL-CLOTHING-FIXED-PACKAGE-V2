@@ -911,12 +911,13 @@ document.addEventListener("DOMContentLoaded", function() {
             let uploadedProofPath = null;
             if (payment === "GCash" && gcashReceiptFile) {
                 const safeExt = (gcashReceiptFile.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
-                const proofPath = `${user.id}/payment-proofs/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${safeExt}`;
+                // Path must start with user.id/ to satisfy custom-designs bucket RLS policy
+                const proofPath = `${user.id}/receipt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${safeExt}`;
                 const { error: uploadErr } = await supabaseClient.storage
                     .from("custom-designs")
                     .upload(proofPath, gcashReceiptFile, {
                         contentType: gcashReceiptFile.type || "image/png",
-                        upsert: false
+                        upsert: true
                     });
                 if (uploadErr) {
                     throw new Error("Could not upload GCash receipt: " + uploadErr.message);
