@@ -72,15 +72,16 @@
         <!-- Search Bar -->
         <div class="header-search">
             <input
-                type="text"
+                type="search"
                 id="search-input"
-                name="product-search"
-                autocomplete="off"
+                name="farrel_catalog_query"
+                autocomplete="new-password"
+                autocapitalize="off"
+                spellcheck="false"
                 placeholder="Search products..."
                 oninput="filterProducts()"
                 onkeydown="if(event.key==='Enter'){event.preventDefault();filterProducts();scrollToProducts();}"
-            >
-            <button type="button" aria-label="Search" onclick="scrollToProducts()">
+>            <button type="button" aria-label="Search" onclick="scrollToProducts()">
                 🔍
             </button>
         </div>

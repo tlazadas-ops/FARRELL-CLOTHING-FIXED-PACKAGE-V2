@@ -261,8 +261,19 @@ function displayProducts(productList) {
 // ===============================
 function filterProducts() {
     const searchInput = document.getElementById("search-input");
-    const search = searchInput ? String(searchInput.value || "").toLowerCase().trim() : "";
-    const normalizedSelected = String(selectedCategory || "All").trim().toUpperCase();
+    let search = searchInput
+    ? String(searchInput.value || "").toLowerCase().trim()
+    : "";
+
+// Clear email autofill accidentally placed in product search
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(search);
+
+if (isEmail) {
+    search = "";
+    if (searchInput) {
+        searchInput.value = "";
+    }
+}    const normalizedSelected = String(selectedCategory || "All").trim().toUpperCase();
 
     const sourceProducts = Array.isArray(products) ? products : [];
 
