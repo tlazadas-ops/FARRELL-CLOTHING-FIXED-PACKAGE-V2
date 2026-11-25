@@ -214,6 +214,10 @@ let productsLoadState = "idle"; // "idle" | "loading" | "loaded" | "error"
 let productsLoadPromise = null;
 let productsLoadSeq = 0;
 
+// Resolves once products are truly loaded from Supabase (or fallback on error)
+let productsReadyResolve = null;
+const productsReady = new Promise(resolve => { productsReadyResolve = resolve; });
+
 function displayProducts(productList) {
     const productContainer = document.getElementById("products");
     if (!productContainer) return;
@@ -261,6 +265,16 @@ function filterProducts() {
     const normalizedSelected = String(selectedCategory || "All").trim().toUpperCase();
 
     const sourceProducts = Array.isArray(products) ? products : [];
+
+    // If still loading and we have no products at all yet, show loading state instead of "No products found"
+    if ((productsLoadState === "loading" || productsLoadState === "idle") && sourceProducts.length === 0) {
+        const productContainer = document.getElementById("products");
+        if (productContainer) {
+            productContainer.innerHTML = `<p class="no-results">Loading products...</p>`;
+        }
+        return;
+    }
+
     const filteredProducts = sourceProducts.filter(product => {
         const productName = String(product?.name || "").toLowerCase();
         const productCategory = String(product?.category || "").trim().toUpperCase();
@@ -1804,18 +1818,23 @@ async function loadStoreProducts(options = {}) {
             const { data, error } = await supabaseClient
                 .from("products")
                 .select("*")
+                .eq("is_active", true)
                 .order("id", { ascending: true });
 
             if (error) throw error;
-            if (requestSeq !== productsLoadSeq) return products;
+            if (requestSeq !== productsLoadSeq) {
+                if (productsLoadPromise && productsLoadPromise !== run) {
+                    return await productsLoadPromise;
+                }
+                return products;
+            }
 
-            if (Array.isArray(data)) {
-                const activeRows = data.filter(row => row.is_active !== false);
+            if (Array.isArray(data) && data.length > 0) {
                 const localImages = new Map(
                     (Array.isArray(products) ? products : []).map(p => [Number(p.id), p.image])
                 );
 
-                products = activeRows.map(row => ({
+                products = data.map(row => ({
                     id: Number(row.id),
                     name: String(row.name || ""),
                     price: Number(row.price || 0),
@@ -1826,17 +1845,31 @@ async function loadStoreProducts(options = {}) {
                     image: row.image || localImages.get(Number(row.id)) || "images/item1.png"
                 }));
                 productsLoadState = "loaded";
+            } else if (Array.isArray(data) && data.length === 0) {
+                // DB returned 0 active products — keep built-in fallback, mark loaded
+                productsLoadState = "loaded";
+                console.warn("LOAD STORE PRODUCTS: 0 active products returned; using built-in catalog.");
             } else {
                 productsLoadState = "error";
                 console.error("LOAD STORE PRODUCTS ERROR: Unexpected response format", data);
             }
         } catch (error) {
-            if (requestSeq !== productsLoadSeq) return products;
+            if (requestSeq !== productsLoadSeq) {
+                if (productsLoadPromise && productsLoadPromise !== run) {
+                    return await productsLoadPromise;
+                }
+                return products;
+            }
             productsLoadState = "error";
             console.error("LOAD STORE PRODUCTS ERROR:", error);
         } finally {
             if (requestSeq === productsLoadSeq) {
                 productsLoadPromise = null;
+                // Signal that the product list is settled (success or error)
+                if (productsReadyResolve) {
+                    productsReadyResolve();
+                    productsReadyResolve = null;
+                }
             }
         }
         return products;
