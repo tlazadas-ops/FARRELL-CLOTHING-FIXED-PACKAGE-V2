@@ -74,6 +74,8 @@
             <input
                 type="text"
                 id="search-input"
+                name="product-search"
+                autocomplete="off"
                 placeholder="Search products..."
                 oninput="filterProducts()"
                 onkeydown="if(event.key==='Enter'){event.preventDefault();filterProducts();scrollToProducts();}"

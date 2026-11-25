@@ -210,6 +210,10 @@ async function saveUserCart() {
 // ===============================
 // DISPLAY PRODUCTS
 // ===============================
+let productsLoadState = "idle"; // "idle" | "loading" | "loaded" | "error"
+let productsLoadPromise = null;
+let productsLoadSeq = 0;
+
 function displayProducts(productList) {
     const productContainer = document.getElementById("products");
     if (!productContainer) return;
@@ -217,7 +221,13 @@ function displayProducts(productList) {
     productContainer.innerHTML = "";
 
     if (!productList || productList.length === 0) {
-        productContainer.innerHTML = `<p class="no-results">No products found.</p>`;
+        if (productsLoadState === "loading") {
+            productContainer.innerHTML = `<p class="no-results">Loading products...</p>`;
+        } else if (productsLoadState === "error") {
+            productContainer.innerHTML = `<p class="no-results">Unable to load products right now. Please refresh or try again.</p>`;
+        } else {
+            productContainer.innerHTML = `<p class="no-results">No products found.</p>`;
+        }
         return;
     }
 
@@ -247,12 +257,15 @@ function displayProducts(productList) {
 // ===============================
 function filterProducts() {
     const searchInput = document.getElementById("search-input");
-    const search = searchInput ? searchInput.value.toLowerCase().trim() : "";
+    const search = searchInput ? String(searchInput.value || "").toLowerCase().trim() : "";
+    const normalizedSelected = String(selectedCategory || "All").trim().toUpperCase();
 
-    const filteredProducts = products.filter(product => {
-        const matchesSearch = product.name.toLowerCase().includes(search);
-        const matchesCategory = selectedCategory.toUpperCase() === "ALL" ||
-            product.category.toUpperCase() === selectedCategory.toUpperCase();
+    const sourceProducts = Array.isArray(products) ? products : [];
+    const filteredProducts = sourceProducts.filter(product => {
+        const productName = String(product?.name || "").toLowerCase();
+        const productCategory = String(product?.category || "").trim().toUpperCase();
+        const matchesSearch = !search || productName.includes(search);
+        const matchesCategory = normalizedSelected === "ALL" || productCategory === normalizedSelected;
         return matchesSearch && matchesCategory;
     });
 
@@ -260,11 +273,12 @@ function filterProducts() {
 }
 
 function setCategory(category) {
-    selectedCategory = category;
+    selectedCategory = String(category || "All").trim() || "All";
+    const normalizedSelected = selectedCategory.toUpperCase();
 
     document.querySelectorAll(".category").forEach(button => {
         button.classList.remove("active");
-        if (button.textContent.trim().toUpperCase() === category.toUpperCase()) {
+        if (button.textContent.trim().toUpperCase() === normalizedSelected) {
             button.classList.add("active");
         }
     });
@@ -543,18 +557,13 @@ async function openCheckout() {
 
     closeCart();
 
-    const profiles = JSON.parse(localStorage.getItem("profiles")) || {};
-    const profile = profiles[currentUsername] || {};
-
     const customerName = document.getElementById("customer-name");
     const contact = document.getElementById("contact");
     const address = document.getElementById("address");
     const payment = document.getElementById("payment");
 
-    if (customerName) customerName.value = profile.name || "";
-    if (contact) contact.value = profile.contact || localStorage.getItem("profileContact_" + currentUsername) || "";
-    if (address) address.value = profile.address || localStorage.getItem("profileAddress_" + currentUsername) || "";
-    if (payment) payment.value = profile.payment || localStorage.getItem("profilePayment_" + currentUsername) || "";
+    const profiles = JSON.parse(localStorage.getItem("profiles")) || {};
+    const localProfile = profiles[currentUsername] || {};
 
     let total = 0;
     cart.forEach(item => {
@@ -564,15 +573,65 @@ async function openCheckout() {
     const checkoutTotal = document.getElementById("checkout-total");
 
     let subscriberDiscount = 0;
+    let savedName = localProfile.name || "";
+    let savedContact = localProfile.contact || localStorage.getItem("profileContact_" + currentUsername) || "";
+    let savedAddress = localProfile.address || localStorage.getItem("profileAddress_" + currentUsername) || "";
+    let savedPayment = localProfile.payment || localStorage.getItem("profilePayment_" + currentUsername) || "";
+
     try {
         const { data: { user } } = await supabaseClient.auth.getUser();
         if (user) {
-            const { data: approved } = await supabaseClient.from("subscriptions").select("id").eq("user_id", user.id).eq("status", "approved").limit(1);
-            if (approved?.length) subscriberDiscount = total * 0.10;
+            const [vipRes, profileRes, latestOrderRes] = await Promise.all([
+                supabaseClient
+                    .from("subscriptions")
+                    .select("id")
+                    .eq("user_id", user.id)
+                    .eq("status", "approved")
+                    .limit(1),
+                supabaseClient
+                    .from("profiles")
+                    .select("*")
+                    .eq("id", user.id)
+                    .maybeSingle(),
+                supabaseClient
+                    .from("orders")
+                    .select("name, contact, address, payment")
+                    .eq("user_id", user.id)
+                    .order("created_at", { ascending: false })
+                    .limit(1)
+                    .maybeSingle()
+            ]);
+
+            if (vipRes?.data?.length) {
+                subscriberDiscount = total * 0.10;
+            }
+
+            const dbProfile = (!profileRes?.error && profileRes?.data) ? profileRes.data : {};
+            const latestOrder = (!latestOrderRes?.error && latestOrderRes?.data) ? latestOrderRes.data : {};
+            const meta = user.user_metadata || {};
+
+            // Pre-fill from saved profile first, then account metadata / most recent order
+            if (!savedName) {
+                savedName = dbProfile.full_name || dbProfile.name || meta.name || latestOrder.name || dbProfile.username || "";
+            }
+            if (!savedContact) {
+                savedContact = dbProfile.contact || dbProfile.phone || meta.contact || meta.phone || latestOrder.contact || "";
+            }
+            if (!savedAddress) {
+                savedAddress = dbProfile.address || meta.address || latestOrder.address || "";
+            }
+            if (!savedPayment) {
+                savedPayment = dbProfile.payment || dbProfile.preferred_payment || latestOrder.payment || "";
+            }
         }
     } catch (error) {
-        console.warn("Could not check VIP approval status:", error.message);
+        console.warn("Could not load saved checkout details:", error.message);
     }
+
+    if (customerName) customerName.value = savedName;
+    if (contact) contact.value = savedContact;
+    if (address) address.value = savedAddress;
+    if (payment) payment.value = savedPayment;
 
     const displayedTotal = total - subscriberDiscount;
     if (checkoutTotal) checkoutTotal.textContent = displayedTotal.toLocaleString("en-PH", { maximumFractionDigits: 2 });
@@ -1554,34 +1613,60 @@ async function logoutUser() {
 // LIVE STORE CATALOG & FLASH SALE
 // (Fixed: preserves product category & rating in Flash Sale)
 // ===============================
-async function loadStoreProducts() {
-    try {
-        const { data, error } = await supabaseClient
-            .from("products")
-            .select("*")
-            .order("id", { ascending: true });
-
-        if (error) throw error;
-
-        if (Array.isArray(data) && data.length) {
-            const activeRows = data.filter(row => row.is_active !== false);
-            if (!activeRows.length) return;
-
-            const localImages = new Map(products.map(p => [Number(p.id), p.image]));
-            products = activeRows.map(row => ({
-                id: Number(row.id),
-                name: row.name,
-                price: Number(row.price),
-                oldPrice: Number(row.old_price || row.price),
-                category: row.category || "Other",
-                rating: Number(row.rating || 0),
-                stock: Number(row.stock || 0),
-                image: row.image || localImages.get(Number(row.id)) || "images/item1.png"
-            }));
-        }
-    } catch (error) {
-        console.warn("Using built-in product catalog:", error.message);
+async function loadStoreProducts(options = {}) {
+    const force = Boolean(options && options.force);
+    if (productsLoadPromise && !force) {
+        return productsLoadPromise;
     }
+
+    const requestSeq = ++productsLoadSeq;
+    productsLoadState = "loading";
+
+    const run = (async () => {
+        try {
+            const { data, error } = await supabaseClient
+                .from("products")
+                .select("*")
+                .order("id", { ascending: true });
+
+            if (error) throw error;
+            if (requestSeq !== productsLoadSeq) return products;
+
+            if (Array.isArray(data)) {
+                const activeRows = data.filter(row => row.is_active !== false);
+                const localImages = new Map(
+                    (Array.isArray(products) ? products : []).map(p => [Number(p.id), p.image])
+                );
+
+                products = activeRows.map(row => ({
+                    id: Number(row.id),
+                    name: String(row.name || ""),
+                    price: Number(row.price || 0),
+                    oldPrice: Number(row.old_price || row.price || 0),
+                    category: String(row.category || "Other").trim() || "Other",
+                    rating: Number(row.rating || 0),
+                    stock: Number(row.stock || 0),
+                    image: row.image || localImages.get(Number(row.id)) || "images/item1.png"
+                }));
+                productsLoadState = "loaded";
+            } else {
+                productsLoadState = "error";
+                console.error("LOAD STORE PRODUCTS ERROR: Unexpected response format", data);
+            }
+        } catch (error) {
+            if (requestSeq !== productsLoadSeq) return products;
+            productsLoadState = "error";
+            console.error("LOAD STORE PRODUCTS ERROR:", error);
+        } finally {
+            if (requestSeq === productsLoadSeq) {
+                productsLoadPromise = null;
+            }
+        }
+        return products;
+    })();
+
+    productsLoadPromise = run;
+    return run;
 }
 
 async function loadFlashSaleSettings() {
@@ -1676,7 +1761,7 @@ async function loadFlashSaleProducts() {
 async function startApp() {
     await loadStoreProducts();
     await loadFlashSaleSettings();
-    displayProducts(products);
+    setCategory(selectedCategory || "All");
     loadCommunityReviews();
 
     try {
@@ -1766,7 +1851,28 @@ window.addEventListener("DOMContentLoaded", async function() {
             localStorage.removeItem("currentUser");
             hideAdminLinks();
         }
+
+        if (event === "SIGNED_IN" || event === "SIGNED_OUT") {
+            window.setTimeout(async () => {
+                await loadStoreProducts({ force: true });
+                filterProducts();
+                if (event === "SIGNED_IN") {
+                    await loadUserCart();
+                    updateCart();
+                }
+            }, 0);
+        }
     });
+});
+
+// Restore live product catalog when returning via browser Back/Forward cache (e.g. Admin -> Store)
+window.addEventListener("pageshow", async function(event) {
+    if (event.persisted) {
+        await loadStoreProducts({ force: true });
+        await loadFlashSaleSettings();
+        filterProducts();
+        checkAdminAccess();
+    }
 });
 
 // Loading screen
