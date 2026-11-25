@@ -93,6 +93,7 @@
       <button data-tab="sale" onclick="showAdminTab('sale')">🔥 Flash Sale</button>
       <button data-tab="designs" onclick="showAdminTab('designs')">✦ Custom Designs</button>
       <button data-tab="subscribers" onclick="showAdminTab('subscribers')">📧 Subscribers</button>
+      <button data-tab="gcash" onclick="showAdminTab('gcash')">💳 GCash Settings</button>
       <button data-tab="access" id="main-admin-tab-button" class="hidden" onclick="showAdminTab('access')">🔐 Admin Access</button>
     </nav>
 
@@ -143,6 +144,39 @@
       <div class="admin-section-head"><h2>VIP SUBSCRIPTIONS</h2><button class="secondary-btn" onclick="loadSubscriptions()">↻ Refresh</button></div>
       <p class="admin-panel">Approve a subscriber before their 10% discount can be enabled in checkout.</p>
       <div id="admin-subscriptions-list" class="admin-products-grid"><p class="admin-empty">Loading subscribers...</p></div>
+    </section>
+
+    <section id="tab-gcash" class="hidden">
+      <div class="admin-section-head"><h2>GCASH PAYMENT SETTINGS</h2></div>
+      <div class="admin-panel">
+        <p style="color:#a9c8df;font-size:13px;margin-top:0">Configure the store GCash account details and QR code displayed to customers during checkout.</p>
+        <div class="admin-form-grid">
+          <div class="admin-field">
+            <label>REGISTERED GCASH ACCOUNT NAME</label>
+            <input type="text" id="gcash-setting-name" placeholder="e.g. FARREL CLOTHING">
+          </div>
+          <div class="admin-field">
+            <label>GCASH MOBILE NUMBER</label>
+            <input type="text" id="gcash-setting-number" placeholder="e.g. 09XXXXXXXXX">
+          </div>
+          <div class="admin-field full">
+            <label>GCASH QR CODE IMAGE URL / PATH</label>
+            <input type="text" id="gcash-setting-qr-url" placeholder="images/gcash-qr.jpg or https://..." oninput="previewAdminGcashQr(this.value)">
+          </div>
+          <div class="admin-field full">
+            <label>OR UPLOAD NEW GCASH QR CODE IMAGE</label>
+            <input type="file" id="gcash-setting-qr-file" accept="image/png,image/jpeg,image/webp" onchange="handleAdminGcashQrFile(event)">
+          </div>
+        </div>
+        <div style="margin:14px 0;padding:14px;border-radius:12px;background:#fff;display:inline-flex;flex-direction:column;align-items:center;gap:8px;">
+          <img id="admin-gcash-qr-preview" src="images/gcash-qr.jpg" alt="GCash QR Preview" style="width:180px;max-width:100%;height:auto;border-radius:8px;object-fit:contain;" onerror="this.src='images/gcash-qr.jpg'">
+          <small style="color:#0f172a;font-weight:700">Live QR Preview</small>
+        </div>
+        <div class="admin-toolbar">
+          <button type="button" class="primary-btn" onclick="saveGcashSettings()">Save GCash Settings</button>
+        </div>
+        <div id="gcash-settings-message" class="admin-message"></div>
+      </div>
     </section>
 
     <section id="tab-access" class="hidden">

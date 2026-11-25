@@ -66,7 +66,7 @@ async function checkAdminAndLoad() {
   $("admin-dashboard").classList.remove("hidden");
   $("admin-logout-btn").classList.remove("hidden");
   $("main-admin-tab-button").classList.toggle("hidden", user.id !== MAIN_ADMIN_UID);
-  await Promise.all([loadOrders(), loadProducts(), loadSaleSettings(), loadCustomDesigns(), loadSubscriptions()]);
+  await Promise.all([loadOrders(), loadProducts(), loadSaleSettings(), loadCustomDesigns(), loadSubscriptions(), loadGcashSettings()]);
   if (adminLiveChannel) { db.removeChannel(adminLiveChannel); adminLiveChannel = null; }
   adminLiveChannel = db.channel("farrell-admin-live")
     .on("postgres_changes",{event:"*",schema:"public",table:"orders"},loadOrders)
@@ -76,7 +76,7 @@ async function checkAdminAndLoad() {
 }
 
 function showAdminTab(tab) {
-  ["orders","products","sale","designs","subscribers","access"].forEach(name => $("tab-"+name).classList.toggle("hidden", name !== tab));
+  ["orders","products","sale","designs","subscribers","gcash","access"].forEach(name => $("tab-"+name).classList.toggle("hidden", name !== tab));
   document.querySelectorAll(".admin-nav button").forEach(btn => btn.classList.toggle("active", btn.dataset.tab === tab));
 }
 
@@ -91,7 +91,24 @@ async function loadOrders() {
     if (result.error) { $("admin-orders-list").innerHTML = `<p class="admin-empty">Could not load order items: ${escapeHTML(result.error.message)}</p>`; return; }
     items = result.data || [];
   }
-  allOrders = sorted.map(order => ({...order, items:items.filter(item => String(item.order_id) === String(order.id))}));
+  allOrders = await Promise.all(sorted.map(async order => {
+    let proofUrl = "";
+    if (order.payment_proof_url) {
+      if (/^https?:\/\//i.test(order.payment_proof_url) || order.payment_proof_url.startsWith("data:")) {
+        proofUrl = order.payment_proof_url;
+      } else {
+        try {
+          const { data: signed } = await db.storage.from("custom-designs").createSignedUrl(order.payment_proof_url, 3600);
+          proofUrl = signed?.signedUrl || "";
+        } catch (e) {}
+      }
+    }
+    return {
+      ...order,
+      _proofSignedUrl: proofUrl,
+      items: items.filter(item => String(item.order_id) === String(order.id))
+    };
+  }));
   renderStats();
   renderOrders();
 }
@@ -159,6 +176,33 @@ function renderOrders() {
         ${itemHTML || '<p class="admin-item-line" style="color:#7c93a6">No item details found.</p>'}
       </div>
 
+      ${(order.payment === "GCash" || order.payment_proof_url) ? (() => {
+        const pStatus = order.payment_status || "Pending Verification";
+        const pBadgeColor = pStatus === "Verified"
+          ? "background:rgba(16,185,129,0.2);color:#6ee7b7;border:1px solid rgba(16,185,129,0.5)"
+          : pStatus === "Rejected"
+            ? "background:rgba(239,68,68,0.2);color:#fca5a5;border:1px solid rgba(239,68,68,0.5)"
+            : "background:rgba(245,158,11,0.2);color:#fcd34d;border:1px solid rgba(245,158,11,0.5)";
+        return `<div class="order-items-box" style="margin-top:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+            <b style="font-size:11px;letter-spacing:1px;color:#7ceeff;">GCASH PAYMENT VERIFICATION</b>
+            <span style="padding:3px 10px;border-radius:999px;font-size:11px;font-weight:800;${pBadgeColor}">${escapeHTML(pStatus)}</span>
+          </div>
+          ${order._proofSignedUrl
+            ? `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+                <a href="${escapeHTML(order._proofSignedUrl)}" target="_blank" rel="noopener noreferrer">
+                  <img src="${escapeHTML(order._proofSignedUrl)}" alt="GCash Receipt" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid rgba(0,217,255,0.4);">
+                </a>
+                <a class="secondary-btn" href="${escapeHTML(order._proofSignedUrl)}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;font-size:12px;padding:7px 12px;">View Full Receipt</a>
+              </div>`
+            : `<p style="font-size:12px;color:#94a3b8;margin:4px 0 10px;">No payment receipt uploaded yet.</p>`}
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="primary-btn" style="padding:7px 12px;font-size:12px;" onclick="updatePaymentStatus('${orderIdSafe}','Verified')" ${pStatus === "Verified" ? "disabled" : ""}>✓ Verify Payment</button>
+            <button type="button" class="danger-btn" style="padding:7px 12px;font-size:12px;" onclick="updatePaymentStatus('${orderIdSafe}','Rejected')" ${pStatus === "Rejected" ? "disabled" : ""}>✕ Reject Payment</button>
+          </div>
+        </div>`;
+      })() : ""}
+
       <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08)">
         <div style="flex:1;min-width:200px">
           <label style="display:block;margin-bottom:6px;font-size:11px;color:#a9c8df;font-weight:800">UPDATE ORDER STATUS</label>
@@ -177,6 +221,108 @@ async function updateOrderStatus(id, status) {
   const {error} = await db.from("orders").update({status}).eq("id",id);
   if (error) { alert("Could not update order: " + error.message); return; }
   await loadOrders();
+}
+
+async function updatePaymentStatus(id, payment_status) {
+  if (!["Pending Verification", "Verified", "Rejected"].includes(payment_status)) return;
+  const { error } = await db.from("orders").update({ payment_status }).eq("id", id);
+  if (error) {
+    alert("Could not update payment status: " + error.message);
+    return;
+  }
+  await loadOrders();
+}
+
+let pendingAdminGcashQrFile = null;
+
+function previewAdminGcashQr(url) {
+  const img = $("admin-gcash-qr-preview");
+  if (img) img.src = url || "images/gcash-qr.jpg";
+}
+
+function handleAdminGcashQrFile(event) {
+  const file = event?.target?.files?.[0];
+  if (!file) { pendingAdminGcashQrFile = null; return; }
+  if (file.size > 5 * 1024 * 1024) {
+    showMessage("gcash-settings-message", "QR image must be 5 MB or smaller.", "error");
+    event.target.value = "";
+    pendingAdminGcashQrFile = null;
+    return;
+  }
+  pendingAdminGcashQrFile = file;
+  const reader = new FileReader();
+  reader.onload = e => previewAdminGcashQr(e.target.result);
+  reader.readAsDataURL(file);
+}
+
+async function loadGcashSettings() {
+  let settings = null;
+  try {
+    const { data, error } = await db.from("payment_settings").select("*").eq("id", 1).maybeSingle();
+    if (!error && data) {
+      settings = { name: data.gcash_name || "", number: data.gcash_number || "", qrUrl: data.gcash_qr_url || "" };
+    }
+  } catch (e) {}
+
+  if (!settings) {
+    try { settings = JSON.parse(localStorage.getItem("farrellGcashSettings") || "null"); } catch (e) {}
+  }
+
+  if ($("gcash-setting-name")) $("gcash-setting-name").value = settings?.name || "";
+  if ($("gcash-setting-number")) $("gcash-setting-number").value = settings?.number || "";
+  if ($("gcash-setting-qr-url")) $("gcash-setting-qr-url").value = settings?.qrUrl || "images/gcash-qr.jpg";
+  previewAdminGcashQr(settings?.qrUrl || "images/gcash-qr.jpg");
+}
+
+async function saveGcashSettings() {
+  hideMessage("gcash-settings-message");
+  const name = ($("gcash-setting-name")?.value || "").trim();
+  const number = ($("gcash-setting-number")?.value || "").trim();
+  let qrUrl = ($("gcash-setting-qr-url")?.value || "").trim() || "images/gcash-qr.jpg";
+
+  if (!name || !number) {
+    showMessage("gcash-settings-message", "Enter both GCash account name and mobile number.", "error");
+    return;
+  }
+
+  if (pendingAdminGcashQrFile) {
+    const ext = (pendingAdminGcashQrFile.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
+    const ownerFolder = currentAdminUser?.id || "admin";
+    const qrPath = `${ownerFolder}/gcash/store-qr-${Date.now()}.${ext}`;
+    const { error: upErr } = await db.storage.from("custom-designs").upload(qrPath, pendingAdminGcashQrFile, {
+      contentType: pendingAdminGcashQrFile.type || "image/png",
+      upsert: true
+    });
+    if (upErr) {
+      showMessage("gcash-settings-message", "Could not upload QR image: " + upErr.message, "error");
+      return;
+    }
+    const { data: pub } = db.storage.from("custom-designs").getPublicUrl(qrPath);
+    qrUrl = pub?.publicUrl || qrUrl;
+    if ($("gcash-setting-qr-url")) $("gcash-setting-qr-url").value = qrUrl;
+    pendingAdminGcashQrFile = null;
+  }
+
+  localStorage.setItem("farrellGcashSettings", JSON.stringify({ name, number, qrUrl }));
+
+  try {
+    const { error } = await db.from("payment_settings").upsert({
+      id: 1,
+      gcash_name: name,
+      gcash_number: number,
+      gcash_qr_url: qrUrl,
+      updated_at: new Date().toISOString()
+    });
+    if (error) {
+      showMessage("gcash-settings-message", "Saved locally. Note for Supabase DB sync: " + error.message, "success");
+      return;
+    }
+  } catch (e) {
+    showMessage("gcash-settings-message", "Saved locally.", "success");
+    return;
+  }
+
+  showMessage("gcash-settings-message", "GCash payment settings saved!", "success");
 }
 
 async function loadProducts() {

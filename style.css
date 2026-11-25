@@ -2355,6 +2355,250 @@ footer {
     font-size: 24px;
 }
 
+/* ==========================================================================
+   GCASH QR PAYMENT SECTION (CHECKOUT)
+   ========================================================================== */
+.gcash-payment-box {
+    margin-top: 16px;
+    padding: 16px;
+    border-radius: var(--radius-md);
+    background: rgba(0, 92, 230, 0.08);
+    border: 1px solid rgba(0, 217, 255, 0.35);
+}
+
+.gcash-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+
+.gcash-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #007dfe;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+}
+
+.gcash-amount-pill {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--color-neon-cyan);
+}
+
+.gcash-qr-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 14px;
+    border-radius: var(--radius-sm);
+    background: #ffffff;
+    margin-bottom: 14px;
+}
+
+.gcash-qr-card img {
+    width: 100%;
+    max-width: 260px;
+    height: auto;
+    border-radius: 8px;
+    display: block;
+    object-fit: contain;
+}
+
+.gcash-secondary-btn {
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid #007dfe;
+    background: rgba(0, 125, 254, 0.1);
+    color: #0056b3;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.gcash-secondary-btn:hover {
+    background: #007dfe;
+    color: #ffffff;
+}
+
+.gcash-account-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border-radius: var(--radius-sm);
+    background: rgba(2, 11, 26, 0.65);
+    border: 1px solid rgba(0, 217, 255, 0.22);
+    margin-bottom: 14px;
+}
+
+.gcash-account-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 13px;
+}
+
+.gcash-label {
+    color: #9bb8d3;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.gcash-number-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.gcash-copy-btn {
+    padding: 3px 9px;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 217, 255, 0.45);
+    background: rgba(0, 217, 255, 0.12);
+    color: var(--color-neon-cyan);
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.gcash-exact-amount {
+    color: var(--color-neon-cyan);
+    font-size: 15px;
+}
+
+.gcash-instructions {
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    border-radius: var(--radius-sm);
+    background: rgba(2, 11, 26, 0.5);
+    border: 1px solid rgba(0, 140, 255, 0.2);
+}
+
+.gcash-instructions h4 {
+    margin: 0 0 8px;
+    font-size: 12px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--color-neon-cyan);
+}
+
+.gcash-instructions ol {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: #dbeafe;
+}
+
+.gcash-upload-area label {
+    margin-top: 0;
+}
+
+.gcash-receipt-preview {
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: var(--radius-sm);
+    background: rgba(2, 11, 26, 0.7);
+    border: 1px solid rgba(0, 217, 255, 0.25);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.gcash-receipt-preview img {
+    width: 64px;
+    height: 64px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.gcash-receipt-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+}
+
+.gcash-receipt-meta span {
+    font-size: 12px;
+    color: #dff8ff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gcash-remove-btn {
+    align-self: flex-start;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 77, 109, 0.5);
+    background: rgba(255, 77, 109, 0.16);
+    color: #ff9eb0;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+body.light-theme .gcash-payment-box {
+    background: #eff6ff !important;
+    border-color: #93c5fd !important;
+}
+
+body.light-theme .gcash-amount-pill,
+body.light-theme .gcash-exact-amount,
+body.light-theme .gcash-instructions h4 {
+    color: #0369a1 !important;
+}
+
+body.light-theme .gcash-account-card,
+body.light-theme .gcash-instructions,
+body.light-theme .gcash-receipt-preview {
+    background: #ffffff !important;
+    border-color: #cbd5e1 !important;
+    color: #0f172a !important;
+}
+
+body.light-theme .gcash-label {
+    color: #475569 !important;
+}
+
+body.light-theme .gcash-instructions ol,
+body.light-theme .gcash-receipt-meta span {
+    color: #1e293b !important;
+}
+
+body.light-theme .gcash-copy-btn {
+    background: #e0f2fe !important;
+    color: #0369a1 !important;
+    border-color: #38bdf8 !important;
+}
+
+body.light-theme .gcash-remove-btn {
+    background: #fee2e2 !important;
+    color: #b91c1c !important;
+    border-color: #fca5a5 !important;
+}
+
+@media (max-width: 600px) {
+    .gcash-qr-card img {
+        max-width: 210px;
+    }
+}
+
 /* Order Success Modal */
 .success-box {
     text-align: center;

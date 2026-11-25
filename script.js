@@ -539,6 +539,142 @@ async function addDetailedProductToCart() {
     playNotificationSound();
 }
 
+let gcashSettingsCache = null;
+let gcashReceiptFile = null;
+let gcashReceiptPreviewUrl = "";
+
+async function loadGcashSettings() {
+    let settings = null;
+
+    try {
+        const { data, error } = await supabaseClient
+            .from("payment_settings")
+            .select("gcash_name, gcash_number, gcash_qr_url")
+            .eq("id", 1)
+            .maybeSingle();
+
+        if (!error && data) {
+            settings = {
+                name: data.gcash_name || "",
+                number: data.gcash_number || "",
+                qrUrl: data.gcash_qr_url || ""
+            };
+        }
+    } catch (e) {
+        console.warn("Payment settings lookup skipped:", e.message);
+    }
+
+    if (!settings) {
+        try {
+            const local = JSON.parse(localStorage.getItem("farrellGcashSettings") || "null");
+            if (local) settings = local;
+        } catch (e) {}
+    }
+
+    gcashSettingsCache = {
+        name: settings?.name || "Store GCash Account",
+        number: settings?.number || "See QR Code",
+        qrUrl: settings?.qrUrl || "images/gcash-qr.jpg"
+    };
+
+    const nameEl = document.getElementById("gcash-account-name");
+    const numEl = document.getElementById("gcash-account-number");
+    const qrEl = document.getElementById("gcash-qr-img");
+
+    if (nameEl) nameEl.textContent = gcashSettingsCache.name;
+    if (numEl) numEl.textContent = gcashSettingsCache.number;
+    if (qrEl) qrEl.src = gcashSettingsCache.qrUrl;
+
+    return gcashSettingsCache;
+}
+
+function toggleGcashSection() {
+    const payment = document.getElementById("payment");
+    const section = document.getElementById("gcash-payment-section");
+    if (!payment || !section) return;
+
+    const isGcash = payment.value === "GCash";
+    section.style.display = isGcash ? "block" : "none";
+
+    if (isGcash) {
+        const totalText = document.getElementById("checkout-total")?.textContent || "0";
+        const amtDisplay = document.getElementById("gcash-amount-display");
+        const amtInline = document.getElementById("gcash-amount-inline");
+        if (amtDisplay) amtDisplay.textContent = totalText;
+        if (amtInline) amtInline.textContent = totalText;
+        loadGcashSettings();
+    }
+}
+
+function handleGcashReceiptChange(event) {
+    const file = event?.target?.files?.[0];
+    if (!file) {
+        clearGcashReceipt();
+        return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+        alert("Payment receipt image must be 5 MB or smaller.");
+        clearGcashReceipt();
+        return;
+    }
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+        alert("Please upload a PNG, JPG, or WEBP screenshot.");
+        clearGcashReceipt();
+        return;
+    }
+
+    gcashReceiptFile = file;
+    if (gcashReceiptPreviewUrl) URL.revokeObjectURL(gcashReceiptPreviewUrl);
+    gcashReceiptPreviewUrl = URL.createObjectURL(file);
+
+    const wrap = document.getElementById("gcash-receipt-preview-wrap");
+    const img = document.getElementById("gcash-receipt-preview");
+    const nameEl = document.getElementById("gcash-receipt-filename");
+    if (img) img.src = gcashReceiptPreviewUrl;
+    if (nameEl) nameEl.textContent = file.name;
+    if (wrap) wrap.style.display = "flex";
+}
+
+function clearGcashReceipt() {
+    gcashReceiptFile = null;
+    if (gcashReceiptPreviewUrl) {
+        URL.revokeObjectURL(gcashReceiptPreviewUrl);
+        gcashReceiptPreviewUrl = "";
+    }
+    const input = document.getElementById("gcash-receipt-input");
+    const wrap = document.getElementById("gcash-receipt-preview-wrap");
+    const img = document.getElementById("gcash-receipt-preview");
+    if (input) input.value = "";
+    if (img) img.src = "";
+    if (wrap) wrap.style.display = "none";
+}
+
+function copyGcashNumber() {
+    const num = document.getElementById("gcash-account-number")?.textContent?.trim() || "";
+    if (!num || num === "—" || num === "See QR Code") return;
+    if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(num).then(() => showNeonPopup("GCash number copied!"));
+    }
+}
+
+async function downloadGcashQr() {
+    const qrSrc = document.getElementById("gcash-qr-img")?.src || "images/gcash-qr.jpg";
+    try {
+        const res = await fetch(qrSrc);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "farrell-clothing-gcash-qr.jpg";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        window.open(qrSrc, "_blank");
+    }
+}
+
 // ===============================
 // CHECKOUT & ORDERS
 // ===============================
@@ -664,6 +800,8 @@ async function openCheckout() {
 
     const checkoutModal = document.getElementById("checkout-modal");
     if (checkoutModal) checkoutModal.style.display = "block";
+    clearGcashReceipt();
+    toggleGcashSection();
 }
 
 function closeCheckout() {
@@ -698,6 +836,11 @@ document.addEventListener("DOMContentLoaded", function() {
 
         if (!name || !contact || !address || !payment) {
             alert("Please fill in all checkout fields.");
+            return;
+        }
+
+        if (payment === "GCash" && !gcashReceiptFile) {
+            alert("Please upload your GCash payment receipt screenshot before placing your order.");
             return;
         }
 
@@ -765,6 +908,22 @@ document.addEventListener("DOMContentLoaded", function() {
                 throw new Error("Please login before placing an order.");
             }
 
+            let uploadedProofPath = null;
+            if (payment === "GCash" && gcashReceiptFile) {
+                const safeExt = (gcashReceiptFile.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
+                const proofPath = `${user.id}/payment-proofs/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${safeExt}`;
+                const { error: uploadErr } = await supabaseClient.storage
+                    .from("custom-designs")
+                    .upload(proofPath, gcashReceiptFile, {
+                        contentType: gcashReceiptFile.type || "image/png",
+                        upsert: false
+                    });
+                if (uploadErr) {
+                    throw new Error("Could not upload GCash receipt: " + uploadErr.message);
+                }
+                uploadedProofPath = proofPath;
+            }
+
             const { data: placedOrder, error: placeError } = await supabaseClient.rpc("place_farrell_order", {
                 p_name: name,
                 p_contact: contact,
@@ -783,6 +942,21 @@ document.addEventListener("DOMContentLoaded", function() {
             const insertedOrder = placedOrder;
             const orderID = insertedOrder.order_id;
             const finalTotal = Number(insertedOrder.total);
+
+            const initialPaymentStatus = payment === "GCash" ? "Pending Verification" : "Cash on Delivery";
+            if (payment === "GCash" && uploadedProofPath) {
+                try {
+                    await supabaseClient
+                        .from("orders")
+                        .update({
+                            payment_proof_url: uploadedProofPath,
+                            payment_status: initialPaymentStatus
+                        })
+                        .eq("order_id", orderID);
+                } catch (proofUpdateErr) {
+                    console.warn("Could not attach payment proof columns on orders:", proofUpdateErr.message);
+                }
+            }
 
             const backendOrder = {
                 orderID: insertedOrder.order_id,
@@ -822,6 +996,8 @@ document.addEventListener("DOMContentLoaded", function() {
             if (successModal) successModal.style.display = "block";
 
             checkoutForm.reset();
+            clearGcashReceipt();
+            toggleGcashSection();
             playNotificationSound();
             showNeonPopup("✅ Order placed successfully!");
         } catch (error) {

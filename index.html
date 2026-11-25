@@ -910,11 +910,73 @@
                 <select
                     id="payment"
                     required
+                    onchange="toggleGcashSection()"
                 >
                     <option value="">Select Payment</option>
                     <option value="Cash on Delivery">Cash on Delivery</option>
                     <option value="GCash">GCash</option>
                 </select>
+
+                <!-- GCASH QR PAYMENT SECTION -->
+                <div id="gcash-payment-section" class="gcash-payment-box" style="display: none;">
+                    <div class="gcash-header">
+                        <span class="gcash-badge">GCash Manual Payment</span>
+                        <span class="gcash-amount-pill">Pay: ₱<span id="gcash-amount-display">0</span></span>
+                    </div>
+
+                    <div class="gcash-qr-card">
+                        <img id="gcash-qr-img" src="images/gcash-qr.jpg" alt="Store GCash QR Code" onerror="this.src='images/gcash-qr.jpg'">
+                        <button type="button" id="gcash-qr-download" class="gcash-secondary-btn" onclick="downloadGcashQr()">
+                            ⬇ Save / Download QR Code
+                        </button>
+                    </div>
+
+                    <div class="gcash-account-card">
+                        <div class="gcash-account-row">
+                            <span class="gcash-label">Account Name</span>
+                            <strong id="gcash-account-name">Configured in Admin</strong>
+                        </div>
+                        <div class="gcash-account-row">
+                            <span class="gcash-label">GCash Number</span>
+                            <div class="gcash-number-wrap">
+                                <strong id="gcash-account-number">—</strong>
+                                <button type="button" class="gcash-copy-btn" onclick="copyGcashNumber()">Copy</button>
+                            </div>
+                        </div>
+                        <div class="gcash-account-row">
+                            <span class="gcash-label">Exact Amount</span>
+                            <strong class="gcash-exact-amount">₱<span id="gcash-amount-inline">0</span></strong>
+                        </div>
+                    </div>
+
+                    <div class="gcash-instructions">
+                        <h4>How to Pay via GCash</h4>
+                        <ol>
+                            <li>Open your GCash app.</li>
+                            <li>Scan the store's QR code above (or save it and upload in GCash).</li>
+                            <li>Enter the exact order amount shown above.</li>
+                            <li>Complete your payment.</li>
+                            <li>Upload your payment receipt screenshot below.</li>
+                        </ol>
+                    </div>
+
+                    <div class="gcash-upload-area">
+                        <label for="gcash-receipt-input">Upload Payment Receipt (Screenshot) *</label>
+                        <input
+                            type="file"
+                            id="gcash-receipt-input"
+                            accept="image/png,image/jpeg,image/webp"
+                            onchange="handleGcashReceiptChange(event)"
+                        >
+                        <div id="gcash-receipt-preview-wrap" class="gcash-receipt-preview" style="display: none;">
+                            <img id="gcash-receipt-preview" src="" alt="Payment Receipt Preview">
+                            <div class="gcash-receipt-meta">
+                                <span id="gcash-receipt-filename">receipt.png</span>
+                                <button type="button" class="gcash-remove-btn" onclick="clearGcashReceipt()">Remove</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
                 <!-- ORDER SUMMARY -->
                 <div class="checkout-summary">
